@@ -18,6 +18,20 @@
         }
         #game-container {
             position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        #ui-panel {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border: 2px solid #FFD700;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
         }
         #admin-panel {
             position: fixed;
@@ -32,29 +46,34 @@
             z-index: 100;
             max-width: 150px;
         }
-        .admin-button {
-            background: #00FF00;
+        button {
+            background: #FFD700;
             color: black;
             border: none;
-            padding: 6px 8px;
-            margin: 3px;
+            padding: 8px 12px;
+            margin: 5px;
             cursor: pointer;
             border-radius: 3px;
             font-weight: bold;
-            font-size: 11px;
+        }
+        button:hover {
+            background: #FFC700;
+        }
+        .admin-button {
+            background: #00FF00;
+            color: black;
         }
         .admin-button:hover {
             background: #00DD00;
         }
-        @media (max-width: 600px) {
-            #admin-panel {
-                font-size: 10px;
+        @media (max-width: 800px) {
+            #ui-panel, #admin-panel {
+                font-size: 11px;
                 padding: 8px;
             }
-            .admin-button {
-                padding: 4px 6px;
-                font-size: 9px;
-                margin: 2px;
+            button {
+                padding: 6px 10px;
+                font-size: 11px;
             }
         }
     </style>
@@ -62,59 +81,38 @@
 <body>
     <div id="game-container"></div>
     
+    <div id="ui-panel">
+        <div><strong>💰 Coins:</strong> <span id="coin-display">0</span></div>
+        <div><strong>📦 Base Level:</strong> <span id="level-display">1</span></div>
+        <div><strong>🧠 Brain Rots:</strong> <span id="count-display">0</span>/<span id="max-display">3</span></div>
+        <button onclick="upgradBase()">⬆️ Upgrade Base</button>
+        <button onclick="addBrainRot()">➕ Add Brain Rot</button>
+    </div>
+
     <div id="admin-panel">
-        <div><strong>ADMIN PANEL</strong></div>
-        <div id="money-display">Coins: 0</div>
-        <button class="admin-button" onclick="addCoins(1000)">+1000 Coins</button>
-        <button class="admin-button" onclick="addCoins(10000)">+10000 Coins</button>
-        <button class="admin-button" onclick="spawnBrainRot()">Spawn Brain Rot</button>
+        <div><strong>ADMIN</strong></div>
+        <button class="admin-button" onclick="adminCoins(5000)">+5K Coins</button>
         <button class="admin-button" onclick="startTsunami()">Start Tsunami</button>
     </div>
 
     <script>
         let gameInstance;
         let gameCoins = 0;
-        let player;
+        let baseLevel = 1;
+        let maxSlots = 3;
         let brainRots = [];
-        let tsunami;
+        let player;
+        let baseDisplay;
         let tsunamiActive = false;
-        let gaps = [];
-        let isHiding = false;
-
-        function updateMoneyDisplay() {
-            document.getElementById('money-display').textContent = `Coins: ${gameCoins}`;
-        }
-
-        function addCoins(amount) {
-            gameCoins += amount;
-            updateMoneyDisplay();
-        }
-
-        function spawnBrainRot() {
-            if (gameInstance && gameInstance.scene.isActive()) {
-                const x = Math.random() * 600 + 100;
-                const y = 400;
-                gameInstance.scene.scenes[0].spawnBrainRot(x, y);
-            }
-        }
-
-        function startTsunami() {
-            if (gameInstance && gameInstance.scene.isActive()) {
-                gameInstance.scene.scenes[0].startTsunami();
-            }
-        }
-
-        const isMobile = window.innerWidth < 800;
-        const gameWidth = isMobile ? window.innerWidth : 1000;
-        const gameHeight = isMobile ? window.innerHeight : 600;
+        let tsunami;
 
         const config = {
             type: Phaser.AUTO,
             parent: 'game-container',
-            width: gameWidth,
-            height: gameHeight,
+            width: window.innerWidth,
+            height: window.innerHeight,
             scale: {
-                mode: Phaser.Scale.FIT,
+                mode: Phaser.Scale.RESIZE,
                 autoCenter: Phaser.Scale.CENTER_BOTH
             },
             render: { 
@@ -136,6 +134,44 @@
 
         gameInstance = new Phaser.Game(config);
 
+        function updateUI() {
+            document.getElementById('coin-display').textContent = Math.floor(gameCoins);
+            document.getElementById('level-display').textContent = baseLevel;
+            document.getElementById('count-display').textContent = brainRots.length;
+            document.getElementById('max-display').textContent = maxSlots;
+        }
+
+        function upgradBase() {
+            if (gameCoins >= 500 * baseLevel) {
+                gameCoins -= 500 * baseLevel;
+                baseLevel++;
+                maxSlots += 2;
+                updateUI();
+                if (gameInstance && gameInstance.scene.isActive()) {
+                    gameInstance.scene.scenes[0].rebuildBase();
+                }
+            }
+        }
+
+        function addBrainRot() {
+            if (brainRots.length < maxSlots && gameCoins >= 100) {
+                gameCoins -= 100;
+                brainRots.push({ level: 1, earnings: 5 });
+                updateUI();
+            }
+        }
+
+        function adminCoins(amount) {
+            gameCoins += amount;
+            updateUI();
+        }
+
+        function startTsunami() {
+            if (gameInstance && gameInstance.scene.isActive()) {
+                gameInstance.scene.scenes[0].startTsunami();
+            }
+        }
+
         function create() {
             const scene = this;
             const w = this.cameras.main.width;
@@ -149,9 +185,9 @@
             bg.depth = -1;
 
             // Clouds
-            this.add.rectangle(w * 0.15, h * 0.13, 150, 40, 0xFFFFFF);
-            this.add.rectangle(w * 0.5, h * 0.17, 120, 35, 0xFFFFFF);
-            this.add.rectangle(w * 0.8, h * 0.12, 140, 38, 0xFFFFFF);
+            this.add.rectangle(w * 0.15, h * 0.1, 150, 40, 0xFFFFFF);
+            this.add.rectangle(w * 0.5, h * 0.15, 120, 35, 0xFFFFFF);
+            this.add.rectangle(w * 0.8, h * 0.08, 140, 38, 0xFFFFFF);
 
             // Player (green square)
             player = this.add.rectangle(100, h - 150, 20, 30, 0x00FF00);
@@ -159,64 +195,76 @@
             player.body.setBounce(0);
             player.body.setCollideWorldBounds(true);
 
-            // Base platform
-            const basePlatform = this.add.rectangle(w / 2, h - 25, w, 50, 0x8B4513);
-            this.physics.add.existing(basePlatform);
-            basePlatform.body.setImmovable(true);
-            basePlatform.body.setAllowGravity(false);
-            this.physics.add.collider(player, basePlatform);
+            // Ground platform
+            const ground = this.add.rectangle(w / 2, h - 40, w, 80, 0x8B4513);
+            this.physics.add.existing(ground);
+            ground.body.setImmovable(true);
+            ground.body.setAllowGravity(false);
+            this.physics.add.collider(player, ground);
 
-            // Create gaps (hide spots)
-            gaps = [];
-            const gapSpacing = (w - 300) / 5;
-            for (let i = 0; i < 5; i++) {
-                const gapX = 150 + (i * gapSpacing);
-                const gap = { x: gapX, width: 80, hidden: false };
-                gaps.push(gap);
-                
-                // Draw gap lines on platform
-                const gapGraphics = this.add.graphics();
-                gapGraphics.lineStyle(2, 0xFF0000);
-                gapGraphics.lineBetween(gapX - 40, h - 50, gapX - 40, h - 25);
-                gapGraphics.lineBetween(gapX + 40, h - 50, gapX + 40, h - 25);
-            }
+            // Base tower
+            scene.rebuildBase = function() {
+                // Clear old base
+                if (baseDisplay) {
+                    baseDisplay.forEach(obj => obj.destroy());
+                }
+                baseDisplay = [];
 
-            // Create initial brain rots
-            for (let i = 0; i < 3; i++) {
-                this.spawnBrainRot(150 + i * (w / 4), h - 200);
-            }
+                const baseX = w / 2 - 50;
+                const slotSize = 40;
+                const slotSpacing = 50;
 
-            // Tsunami (starts off-screen)
+                // Draw base structure
+                for (let i = 0; i < maxSlots; i++) {
+                    const slotY = h - 100 - (i * slotSpacing);
+                    const slot = scene.add.rectangle(baseX, slotY, slotSize, slotSize, 0x654321);
+                    slot.setStrokeStyle(2, 0xFFFFFF);
+                    baseDisplay.push(slot);
+
+                    // Add brain rot if exists
+                    if (i < brainRots.length) {
+                        const brainRot = scene.add.rectangle(baseX, slotY, slotSize - 10, slotSize - 10, 0xFF00FF);
+                        brainRot.setInteractive();
+                        brainRot.slotIndex = i;
+                        
+                        // Label shows level
+                        const label = scene.add.text(baseX, slotY, 'Lv ' + brainRots[i].level, {
+                            fontSize: '12px',
+                            fill: '#FFFFFF'
+                        }).setOrigin(0.5, 0.5);
+                        baseDisplay.push(label);
+                        baseDisplay.push(brainRot);
+
+                        // Tap to sell
+                        brainRot.on('pointerdown', () => {
+                            gameCoins += 50 * brainRots[i].level;
+                            brainRots.splice(i, 1);
+                            updateUI();
+                            scene.rebuildBase();
+                        });
+                    }
+                }
+            };
+
+            scene.rebuildBase();
+
+            // Tsunami
             tsunami = this.add.rectangle(-50, h / 2, 100, h, 0x0099FF);
             this.physics.add.existing(tsunami);
             tsunami.body.setAllowGravity(false);
 
-            // UI Text
-            const fontSize1 = isMobile ? '14px' : '18px';
-            const fontSize2 = isMobile ? '10px' : '12px';
-            this.add.text(10, 10, 'Earn Coins! Hide from Tsunami!', { fontSize: fontSize1, fill: '#FFFFFF', fontStyle: 'bold' });
-            this.add.text(10, 35, isMobile ? 'Tap Rots to Upgrade | Use Buttons to Move | Tap to Jump' : 'Tap Brain Rots to Upgrade | Arrow Keys: Move | Tap to Jump', { fontSize: fontSize2, fill: '#FFFFFF' });
-
             // Input
-            const cursors = this.input.keyboard.createCursorKeys();
             scene.touchLeft = false;
             scene.touchRight = false;
+            const btnY = h - 20;
             
-            this.input.keyboard.on('keydown-SPACE', () => {
-                if (player.body.touching.down) {
-                    player.body.setVelocityY(-300);
-                }
-            });
-            
-            // Touch buttons for mobile
-            const btnY = h - 25;
             const leftBtn = this.add.rectangle(50, btnY, 80, 40, 0x00D9FF);
             const rightBtn = this.add.rectangle(w - 50, btnY, 80, 40, 0x00D9FF);
             leftBtn.setInteractive();
             rightBtn.setInteractive();
             
-            this.add.text(50, btnY, '◄', { fontSize: '30px', fill: '#FFFFFF' }).setOrigin(0.5, 0.5);
-            this.add.text(w - 50, btnY, '►', { fontSize: '30px', fill: '#FFFFFF' }).setOrigin(0.5, 0.5);
+            this.add.text(50, btnY, '◀', { fontSize: '30px', fill: '#FFFFFF' }).setOrigin(0.5, 0.5);
+            this.add.text(w - 50, btnY, '▶', { fontSize: '30px', fill: '#FFFFFF' }).setOrigin(0.5, 0.5);
             
             leftBtn.on('pointerdown', () => { scene.touchLeft = true; });
             leftBtn.on('pointerup', () => { scene.touchLeft = false; });
@@ -226,54 +274,42 @@
             rightBtn.on('pointerup', () => { scene.touchRight = false; });
             rightBtn.on('pointerout', () => { scene.touchRight = false; });
             
-            // Tap anywhere to jump
+            // Jump on tap
             this.input.on('pointerdown', (pointer) => {
-                if (pointer.y < 500 && player.body.touching.down) {
+                if (pointer.y < h - 100 && player.body.touching.down) {
                     player.body.setVelocityY(-300);
                 }
             });
-            
-            // Store references
-            scene.cursors = cursors;
-            scene.spawnBrainRot = function(x, y) {
-                const size = isMobile ? 25 : 30;
-                const brainRot = scene.add.rectangle(x, y, size, size, 0xFF00FF);
-                brainRot.data = {
-                    level: 1,
-                    earnings: 10,
-                    x: x
-                };
-                brainRot.setInteractive();
-                brainRot.on('pointerdown', () => {
-                    if (gameCoins >= 50 * brainRot.data.level) {
-                        gameCoins -= 50 * brainRot.data.level;
-                        brainRot.data.level++;
-                        brainRot.data.earnings += 10;
-                        brainRot.setScale(1 + brainRot.data.level * 0.1);
-                        brainRot.setTint(0xFF00FF - (brainRot.data.level * 0x111111));
-                        updateMoneyDisplay();
-                    }
-                });
-                brainRots.push(brainRot);
-                return brainRot;
-            };
 
             scene.startTsunami = function() {
                 tsunamiActive = true;
                 tsunami.x = -50;
-                tsunami.body.setVelocityX(150);
+                tsunami.body.setVelocityX(200);
             };
 
-            updateMoneyDisplay();
+            // UI Text
+            this.add.text(w / 2, 20, '🧠 STEAL A BRAIN ROT 🧠', { 
+                fontSize: '20px', 
+                fill: '#FFFFFF', 
+                fontStyle: 'bold' 
+            }).setOrigin(0.5, 0);
+            this.add.text(w / 2, 50, 'Tap Brain Rots to SELL | Build your tower | Avoid tsunami!', { 
+                fontSize: '12px', 
+                fill: '#FFFFFF' 
+            }).setOrigin(0.5, 0);
+
+            updateUI();
         }
 
         function update() {
             const scene = this;
+            const w = scene.cameras.main.width;
+            const h = scene.cameras.main.height;
 
-            // Player movement (keyboard + touch buttons)
-            if (this.input.keyboard.keys[37] || this.cursors?.left.isDown || scene.touchLeft) { // Left arrow
+            // Player movement
+            if (scene.touchLeft) {
                 player.body.setVelocityX(-160);
-            } else if (this.input.keyboard.keys[39] || this.cursors?.right.isDown || scene.touchRight) { // Right arrow
+            } else if (scene.touchRight) {
                 player.body.setVelocityX(160);
             } else {
                 player.body.setVelocityX(0);
@@ -281,43 +317,34 @@
 
             // Earn money from brain rots
             brainRots.forEach(br => {
-                gameCoins += br.data.earnings * 0.001; // Slow passive income
-                if (Math.random() < 0.02) {
-                    updateMoneyDisplay();
-                }
+                gameCoins += br.earnings * 0.01;
             });
-
-            // Check if player is in a gap (hiding)
-            const h = scene.cameras.main.height;
-            isHiding = false;
-            gaps.forEach(gap => {
-                if (player.x > gap.x - gap.width/2 && player.x < gap.x + gap.width/2 && player.y > h - 100) {
-                    isHiding = true;
-                    player.setAlpha(0.5); // Semi-transparent when hiding
-                }
-            });
-            if (!isHiding) {
-                player.setAlpha(1);
+            if (Math.random() < 0.02) {
+                updateUI();
             }
 
             // Tsunami collision
-            if (tsunamiActive && tsunami.x < 1000) {
-                if (!isHiding && Phaser.Math.Distance.Between(player.x, player.y, tsunami.x, tsunami.y) < 80) {
-                    // Hit by tsunami - restart
-                    this.scene.restart();
+            if (tsunamiActive && tsunami.x < w) {
+                if (Phaser.Math.Distance.Between(player.x, player.y, tsunami.x, tsunami.y) < 80) {
+                    scene.scene.restart();
                 }
             }
 
-            // Remove brain rots that fall off screen
-            brainRots = brainRots.filter(br => br.active);
-
-            // Stop tsunami after it passes
-            const w = scene.cameras.main.width;
+            // Stop tsunami
             if (tsunamiActive && tsunami.x > w) {
                 tsunamiActive = false;
                 tsunami.body.setVelocityX(0);
             }
+
+            // Fall = die
+            if (player.y > h + 50) {
+                scene.scene.restart();
+            }
         }
+
+        window.addEventListener('resize', () => {
+            gameInstance.scale.resize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
