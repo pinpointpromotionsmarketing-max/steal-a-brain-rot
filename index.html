@@ -11,10 +11,9 @@
             padding: 0;
             box-sizing: border-box;
         }
-        body {
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
+        body, html {
+            width: 100%;
+            height: 100%;
             background: #000;
         }
         #game {
@@ -27,16 +26,16 @@
     <div id="game"></div>
     
     <script>
-        const config = {
+        const gameConfig = {
             type: Phaser.AUTO,
             parent: 'game',
             width: window.innerWidth,
             height: window.innerHeight,
-            backgroundColor: '#FFB347',
+            backgroundColor: 0xFF8C00,
             physics: {
                 default: 'arcade',
                 arcade: {
-                    gravity: { y: 500 },
+                    gravity: { y: 400 },
                     debug: false
                 }
             },
@@ -46,114 +45,136 @@
             }
         };
 
-        const game = new Phaser.Game(config);
+        const game = new Phaser.Game(gameConfig);
         
-        let player;
-        let brainRots = [];
-        let coins = 0;
-        let tsunami;
-        let tsunamiActive = false;
-        let touchLeft = false;
-        let touchRight = false;
+        let player, brainRots = [], coins = 0, tsunami, isPaused = false;
+        let touchLeft = false, touchRight = false, tsunamiSpeed = 0;
 
         function create() {
             const w = this.cameras.main.width;
             const h = this.cameras.main.height;
             const scene = this;
 
-            // Sky background
-            this.cameras.main.setBackgroundColor('#FF8C00');
+            // Roblox orange/yellow sky
+            this.cameras.main.setBackgroundColor(0xFF8C00);
 
             // Clouds
-            this.add.rectangle(w * 0.2, h * 0.1, 100, 30, 0xFFFFFF);
-            this.add.rectangle(w * 0.7, h * 0.15, 100, 30, 0xFFFFFF);
+            this.add.rectangle(w * 0.1, h * 0.1, 120, 40, 0xFFFFFF);
+            this.add.rectangle(w * 0.7, h * 0.12, 150, 50, 0xFFFFFF);
+            this.add.rectangle(w * 0.4, h * 0.18, 100, 35, 0xFFFFFF);
 
             // Ground
-            const ground = this.add.rectangle(w / 2, h - 30, w, 60, 0x8B4513);
+            const ground = this.add.rectangle(w / 2, h - 40, w, 80, 0x8B4513);
             this.physics.add.existing(ground);
             ground.body.setImmovable(true);
             ground.body.setAllowGravity(false);
 
-            // Player (RED)
-            player = this.add.rectangle(w * 0.1, h - 100, 30, 40, 0xFF0000);
+            // Player (red square - Roblox style)
+            player = this.add.rectangle(w * 0.05, h - 120, 40, 50, 0xFF0000);
             this.physics.add.existing(player);
-            player.body.setBounce(0.2);
+            player.body.setBounce(0.1);
             player.body.setCollideWorldBounds(true);
             this.physics.add.collider(player, ground);
 
-            // Add some brain rots on screen
-            for (let i = 0; i < 3; i++) {
-                const br = this.add.rectangle(w * 0.2 + i * 150, h - 150, 40, 40, 0xFF00FF);
+            // Spawn brain rots (purple squares)
+            for (let i = 0; i < 5; i++) {
+                const br = this.add.rectangle(w * 0.15 + i * (w * 0.15), h - 150, 35, 35, 0xFF00FF);
                 this.physics.add.existing(br);
-                br.data = { earnings: 10, level: 1 };
+                br.value = 10 + i * 5;
                 br.setInteractive();
                 br.on('pointerdown', () => {
-                    coins += 50;
+                    coins += br.value;
                     br.destroy();
                     brainRots = brainRots.filter(x => x !== br);
+                    updateDisplay();
                 });
                 brainRots.push(br);
                 this.physics.add.collider(br, ground);
             }
 
             // Tsunami
-            tsunami = this.add.rectangle(-100, h / 2, 100, h, 0x0099FF);
+            tsunami = this.add.rectangle(-60, h / 2, 120, h + 100, 0x00AAFF);
             this.physics.add.existing(tsunami);
             tsunami.body.setAllowGravity(false);
+            tsunamiSpeed = 0;
 
-            // Left/Right buttons
-            const btnLeft = this.add.rectangle(50, h - 50, 80, 50, 0x00D9FF);
-            const btnRight = this.add.rectangle(w - 50, h - 50, 80, 50, 0x00D9FF);
-            btnLeft.setInteractive();
-            btnRight.setInteractive();
+            // UI Text
+            this.add.text(w / 2, 15, '🧠 STEAL A BRAIN ROT 🧠', {
+                fontSize: '24px',
+                fill: '#000000',
+                fontStyle: 'bold'
+            }).setOrigin(0.5, 0);
 
-            this.add.text(50, h - 50, '◀', { fontSize: '30px', fill: '#000' }).setOrigin(0.5, 0.5);
-            this.add.text(w - 50, h - 50, '▶', { fontSize: '30px', fill: '#000' }).setOrigin(0.5, 0.5);
+            const coinsText = this.add.text(15, 15, '💰 0', {
+                fontSize: '20px',
+                fill: '#FFD700',
+                fontStyle: 'bold'
+            });
+            scene.coinsText = coinsText;
 
-            btnLeft.on('pointerdown', () => { touchLeft = true; });
-            btnLeft.on('pointerup', () => { touchLeft = false; });
-            btnLeft.on('pointerout', () => { touchLeft = false; });
+            this.add.text(w / 2, h - 80, 'Collect Purple Blocks | Press Start Tsunami', {
+                fontSize: '14px',
+                fill: '#000000'
+            }).setOrigin(0.5);
 
-            btnRight.on('pointerdown', () => { touchRight = true; });
-            btnRight.on('pointerup', () => { touchRight = false; });
-            btnRight.on('pointerout', () => { touchRight = false; });
+            // Control buttons
+            const btnY = h - 50;
+            
+            // Left button
+            const leftBtn = this.add.rectangle(50, btnY, 80, 50, 0x00D9FF);
+            leftBtn.setInteractive();
+            this.add.text(50, btnY, '◀', { fontSize: '28px', fill: '#000' }).setOrigin(0.5, 0.5);
+            leftBtn.on('pointerdown', () => { touchLeft = true; });
+            leftBtn.on('pointerup', () => { touchLeft = false; });
+            leftBtn.on('pointerout', () => { touchLeft = false; });
+
+            // Right button
+            const rightBtn = this.add.rectangle(w - 50, btnY, 80, 50, 0x00D9FF);
+            rightBtn.setInteractive();
+            this.add.text(w - 50, btnY, '▶', { fontSize: '28px', fill: '#000' }).setOrigin(0.5, 0.5);
+            rightBtn.on('pointerdown', () => { touchRight = true; });
+            rightBtn.on('pointerup', () => { touchRight = false; });
+            rightBtn.on('pointerout', () => { touchRight = false; });
+
+            // Start tsunami button
+            const startBtn = this.add.rectangle(w - 120, 50, 120, 50, 0x00FF00);
+            startBtn.setInteractive();
+            this.add.text(w - 120, 50, 'Start\nTsunami!', {
+                fontSize: '12px',
+                fill: '#000',
+                fontStyle: 'bold',
+                align: 'center'
+            }).setOrigin(0.5, 0.5);
+            startBtn.on('pointerdown', () => {
+                if (tsunamiSpeed === 0) {
+                    tsunamiSpeed = 250;
+                }
+            });
 
             // Jump on tap
             this.input.on('pointerdown', (p) => {
                 if (p.y < h - 100 && player.body.touching.down) {
-                    player.body.setVelocityY(-400);
+                    player.body.setVelocityY(-350);
                 }
             });
 
-            // UI
-            this.add.text(10, 10, '💰 Coins: ' + coins, { fontSize: '20px', fill: '#000', fontStyle: 'bold' });
-            this.add.text(w / 2, 10, '🧠 Steal a Brain Rot 🧠', { fontSize: '18px', fill: '#000', fontStyle: 'bold' }).setOrigin(0.5, 0);
-            this.add.text(10, h - 80, 'Tap Brain Rots for $$ | Dodge Tsunami!', { fontSize: '14px', fill: '#000' });
-
-            // Tsunami button
-            const tsBtn = this.add.rectangle(w - 100, 50, 90, 40, 0x00FF00);
-            tsBtn.setInteractive();
-            this.add.text(w - 100, 50, 'Tsunami!', { fontSize: '14px', fill: '#000', fontStyle: 'bold' }).setOrigin(0.5, 0.5);
-            tsBtn.on('pointerdown', () => {
-                tsunamiActive = true;
-                tsunami.x = -50;
-                tsunami.body.setVelocityX(300);
-            });
-
-            scene.updateCoins = function() {
-                coins += 1;
+            scene.updateDisplay = function() {
+                scene.coinsText.setText('💰 ' + Math.floor(coins));
             };
+
+            function updateDisplay() {
+                scene.updateDisplay();
+            }
         }
 
         function update() {
             const w = this.cameras.main.width;
             const h = this.cameras.main.height;
 
-            // Coins display
-            if (Math.random() < 0.1) {
-                brainRots.forEach(br => {
-                    coins += br.data.earnings * 0.1;
-                });
+            // Earn coins slowly
+            coins += brainRots.length * 0.5;
+            if (Math.random() < 0.05) {
+                this.scene.scenes[0].updateDisplay();
             }
 
             // Player movement
@@ -165,21 +186,25 @@
                 player.body.setVelocityX(0);
             }
 
-            // Tsunami hit
-            if (tsunamiActive && Phaser.Math.Distance.Between(player.x, player.y, tsunami.x, tsunami.y) < 80) {
+            // Tsunami movement
+            if (tsunamiSpeed > 0) {
+                tsunami.body.setVelocityX(tsunamiSpeed);
+            }
+
+            // Hit by tsunami
+            if (Phaser.Math.Distance.Between(player.x, player.y, tsunami.x, tsunami.y) < 100) {
                 this.scene.restart();
             }
 
-            // Stop tsunami
-            if (tsunami.x > w) {
-                tsunamiActive = false;
-            }
-
-            // Fall = die
-            if (player.y > h) {
+            // Fall = death
+            if (player.y > h + 100) {
                 this.scene.restart();
             }
         }
+
+        window.addEventListener('resize', () => {
+            game.scale.resize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
