@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steal a Brain Rot</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            position: relative;
+        }
+        #admin-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border: 2px solid #00FF00;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        .admin-button {
+            background: #00FF00;
+            color: black;
+            border: none;
+            padding: 8px 12px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .admin-button:hover {
+            background: #00DD00;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    
+    <div id="admin-panel">
+        <div><strong>ADMIN PANEL</strong></div>
+        <div id="money-display">Coins: 0</div>
+        <button class="admin-button" onclick="addCoins(1000)">+1000 Coins</button>
+        <button class="admin-button" onclick="addCoins(10000)">+10000 Coins</button>
+        <button class="admin-button" onclick="spawnBrainRot()">Spawn Brain Rot</button>
+        <button class="admin-button" onclick="startTsunami()">Start Tsunami</button>
+    </div>
+
+    <script>
+        let gameInstance;
+        let gameCoins = 0;
+        let player;
+        let brainRots = [];
+        let tsunami;
+        let tsunamiActive = false;
+        let gaps = [];
+        let isHiding = false;
+
+        function updateMoneyDisplay() {
+            document.getElementById('money-display').textContent = `Coins: ${gameCoins}`;
+        }
+
+        function addCoins(amount) {
+            gameCoins += amount;
+            updateMoneyDisplay();
+        }
+
+        function spawnBrainRot() {
+            if (gameInstance && gameInstance.scene.isActive()) {
+                const x = Math.random() * 600 + 100;
+                const y = 400;
+                gameInstance.scene.scenes[0].spawnBrainRot(x, y);
+            }
+        }
+
+        function startTsunami() {
+            if (gameInstance && gameInstance.scene.isActive()) {
+                gameInstance.scene.scenes[0].startTsunami();
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            parent: 'game-container',
+            width: 1000,
+            height: 600,
+            render: { 
+                pixelArt: false,
+                antialias: true
+            },
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 300 },
+                    debug: false
+                }
+            },
+            scene: {
+                create: create,
+                update: update
+            }
+        };
+
+        gameInstance = new Phaser.Game(config);
+
+        function create() {
+            const scene = this;
+
+            // Roblox-style sky
+            this.cameras.main.setBackgroundColor('#FFB347');
+            const bg = this.add.graphics();
+            bg.fillGradientStyle(0xFF8C00, 0xFF8C00, 0xFFD700, 0xFFD700, 1);
+            bg.fillRect(0, 0, 1000, 600);
+            bg.depth = -1;
+
+            // Clouds
+            this.add.rectangle(150, 80, 150, 40, 0xFFFFFF);
+            this.add.rectangle(500, 100, 120, 35, 0xFFFFFF);
+            this.add.rectangle(800, 70, 140, 38, 0xFFFFFF);
+
+            // Player (green square)
+            player = this.add.rectangle(100, 450, 20, 30, 0x00FF00);
+            this.physics.add.existing(player);
+            player.body.setBounce(0);
+            player.body.setCollideWorldBounds(true);
+
+            // Base platform
+            const basePlatform = this.add.rectangle(500, 550, 1000, 50, 0x8B4513);
+            this.physics.add.existing(basePlatform);
+            basePlatform.body.setImmovable(true);
+            basePlatform.body.setAllowGravity(false);
+            this.physics.add.collider(player, basePlatform);
+
+            // Create gaps (hide spots)
+            gaps = [];
+            for (let i = 0; i < 5; i++) {
+                const gapX = 150 + (i * 180);
+                const gap = { x: gapX, width: 80, hidden: false };
+                gaps.push(gap);
+                
+                // Draw gap lines on platform
+                const gapGraphics = this.add.graphics();
+                gapGraphics.lineStyle(2, 0xFF0000);
+                gapGraphics.lineBetween(gapX - 40, 535, gapX - 40, 570);
+                gapGraphics.lineBetween(gapX + 40, 535, gapX + 40, 570);
+            }
+
+            // Create initial brain rots
+            for (let i = 0; i < 3; i++) {
+                this.spawnBrainRot(200 + i * 150, 400);
+            }
+
+            // Tsunami (starts off-screen)
+            tsunami = this.add.rectangle(-100, 400, 100, 600, 0x0099FF);
+            this.physics.add.existing(tsunami);
+            tsunami.body.setAllowGravity(false);
+
+            // UI Text
+            this.add.text(10, 10, 'Earn Coins! Hide from Tsunami!', { fontSize: '18px', fill: '#FFFFFF', fontStyle: 'bold' });
+            this.add.text(10, 40, 'Tap Brain Rots to Upgrade | Arrow Keys: Move | Tap to Jump', { fontSize: '12px', fill: '#FFFFFF' });
+
+            // Input
+            const cursors = this.input.keyboard.createCursorKeys();
+            
+            this.input.keyboard.on('keydown-SPACE', () => {
+                if (player.body.touching.down) {
+                    player.body.setVelocityY(-300);
+                }
+            });
+
+            // Store references
+            scene.cursors = cursors;
+            scene.spawnBrainRot = function(x, y) {
+                const brainRot = scene.add.rectangle(x, y, 30, 30, 0xFF00FF);
+                brainRot.data = {
+                    level: 1,
+                    earnings: 10,
+                    x: x
+                };
+                brainRot.setInteractive();
+                brainRot.on('pointerdown', () => {
+                    if (gameCoins >= 50 * brainRot.data.level) {
+                        gameCoins -= 50 * brainRot.data.level;
+                        brainRot.data.level++;
+                        brainRot.data.earnings += 10;
+                        brainRot.setScale(1 + brainRot.data.level * 0.1);
+                        brainRot.setTint(0xFF00FF - (brainRot.data.level * 0x111111));
+                        updateMoneyDisplay();
+                    }
+                });
+                brainRots.push(brainRot);
+                return brainRot;
+            };
+
+            scene.startTsunami = function() {
+                tsunamiActive = true;
+                tsunami.x = -50;
+                tsunami.body.setVelocityX(150);
+            };
+
+            updateMoneyDisplay();
+        }
+
+        function update() {
+            const scene = this;
+
+            // Player movement
+            if (this.input.keyboard.keys[37] || this.cursors?.left.isDown) { // Left arrow
+                player.body.setVelocityX(-160);
+            } else if (this.input.keyboard.keys[39] || this.cursors?.right.isDown) { // Right arrow
+                player.body.setVelocityX(160);
+            } else {
+                player.body.setVelocityX(0);
+            }
+
+            // Earn money from brain rots
+            brainRots.forEach(br => {
+                gameCoins += br.data.earnings * 0.001; // Slow passive income
+                if (Math.random() < 0.02) {
+                    updateMoneyDisplay();
+                }
+            });
+
+            // Check if player is in a gap (hiding)
+            isHiding = false;
+            gaps.forEach(gap => {
+                if (player.x > gap.x - gap.width/2 && player.x < gap.x + gap.width/2 && player.y > 500) {
+                    isHiding = true;
+                    player.setAlpha(0.5); // Semi-transparent when hiding
+                }
+            });
+            if (!isHiding) {
+                player.setAlpha(1);
+            }
+
+            // Tsunami collision
+            if (tsunamiActive && tsunami.x < 1000) {
+                if (!isHiding && Phaser.Math.Distance.Between(player.x, player.y, tsunami.x, tsunami.y) < 80) {
+                    // Hit by tsunami - restart
+                    this.scene.restart();
+                }
+            }
+
+            // Remove brain rots that fall off screen
+            brainRots = brainRots.filter(br => br.active);
+
+            // Stop tsunami after it passes
+            if (tsunamiActive && tsunami.x > 1000) {
+                tsunamiActive = false;
+                tsunami.body.setVelocityX(0);
+            }
+        }
+    </script>
+</body>
+</html>
